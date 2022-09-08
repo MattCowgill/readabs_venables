@@ -1,0 +1,214 @@
+---
+format:
+  revealjs:
+    self-contained: true
+    theme: style.scss
+    transition: fade
+    logo: "https://github.com/MattCowgill/readabs/raw/master/man/figures/logo.png"
+    background-transition: fade
+    highlight-style: ayu-mirage
+    height: 1080
+    width: 1920
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r eval=T, echo = F}
+library(tidyverse)
+library(readabs)
+library(seektheme)
+
+theme_mc <- function(...) {
+  ggplot2::update_geom_defaults("line", list(colour = mc_cols[1]))
+  theme_seek(...)
+}
+
+mc_cols <- c("#00589b",
+             "#2a9d8f",
+             "#e9c46a",
+             "#f4a261",
+             "#e76f51")
+
+mc_pal <- function(n, reverse = F) {
+  if (n <= length(mc_cols)) {
+    out <- mc_cols[1:n]
+  } else {
+    out <- grDevices::colorRampPalette(mc_cols)(n)
+  }
+  if (reverse) {
+    out <- rev(out)
+  }
+  out
+}
+
+mc_pal_rev <- function(n) {
+  mc_pal(n, reverse = T)
+}
+
+mc_colour <- function(..., reverse = FALSE) {
+  mc_discrete_scale(aesthetics = "colour",
+                    scale_name = "seek_colour",
+                    reverse = reverse,
+                    ...)
+}
+
+mc_discrete_scale <- function(aesthetics, scale_name, reverse, ...) {
+      ggplot2::discrete_scale(aesthetics = aesthetics, 
+                              scale_name = scale_name,
+                              palette = if (reverse) {
+            mc_pal_rev
+        }
+        else {
+            mc_pal
+        }, na.value = seek_grey_5, ...)
+}
+
+ggplot2::update_geom_defaults("line", list(colour = mc_cols[1]))
+```
+
+<h1>Tidy ABS data with {readabs}</h1>
+
+<hr>
+
+<h3>Matt Cowgill</h3>
+
+<h3>`r format(Sys.Date(), "%B %Y")`</h3>
+
+<br>
+
+<h3>
+
+`r fontawesome::fa("github", "black", height = "1.5cm")`   <https://github.com/mattcowgill/readabs/>
+
+![](https://mattcowgill.github.io/readabs/reference/figures/logo.png){.absolute top="250" left="1100" width="300"} <!-- ![](https://raw.githubusercontent.com/rstudio/hex-stickers/master/PNG/dplyr.png){.absolute top=680 left=1250 width="300"} -->
+
+<!-- ![](https://www.rstudio.com/wp-content/uploads/2018/10/RStudio-Logo-Flat.png){.absolute top=360 left=965 height="65"} -->
+
+## About me
+
+```{r about}
+#| echo: true
+#| eval: false
+#| code-line-numbers: "1|2-3|4-5|6|7|8|9|10|"
+
+matt_cowgill |>
+  uwa(degrees = c("Bachelor of Economics",
+                  "Bachelor of Arts (Political Science)")) |>
+  wa_government() |>
+  uol(degree = "MSc (Economic Policy)")
+  actu() |>
+  ilo() |>
+  grattan() |>
+  vic_government() |>
+  seek()
+
+```
+
+## The goal of {readabs}
+
+<br>
+
+[To remove frictions in importing ABS data to R, to enable fluid data analysis]{style="font-size:48pt"}
+
+![](images/import_tidy_diagram.png){fig-align="center"}
+
+## The motivation for {readabs}
+
+## The motivation for {readabs}
+
+![](images/lfs_excel.png){fig-align="center"}
+
+## The motivation for {readabs}
+
+![](https://mattcowgill.github.io/readabs/articles/VIGNETTE-spreadsheet-screenshot.png){fig-align="center"}
+
+## What {readabs} does
+
+The key function `readabs::read_abs()`
+
+1.  Finds the URLs for requested time series data;
+
+2.  Downloads and imports the data into R; and
+
+3.  Tidies the data.
+
+## How it works: finding the data
+
+-   Users request a catalogue number, specific table, or time series ID.
+-   That request is translated into a query of an old API called the [Time Series Directory](https://www.abs.gov.au/websitedbs/D3310114.nsf/home/Time+Series+Directory+-+URL+formula+instructions+for+access+to+Time+Series+Metadata)
+-   URL(s) for Excel spreadsheets matching the user's query are identified in the TSD
+
+![](images/tsd_xml.png){fig-align="center"}
+
+## How it works: Downloading and importing the data
+
+-   File(s) are downloaded to a temporary directory, or a user-specified directory
+-   .fst versions of the files are stored and used as local cache for subsequent queries
+-   For all downloaded Excel sheets, `readxl::excel_sheets` is used to generate a vector of worksheets
+-   Remove any that don't contain data (eg. `Contents`, `Inquiries`)
+-   All data sheets are imported using `readxl::read_excel()`
+
+## How it works: tidying the data
+
+-   Lots of annoying wrangling with `pivot_longer()` and friends
+
+::: columns
+::: {.column width="50%"}
+We turn this... ![](images/lfs_excel.png){fig-align="center"}
+:::
+
+::: {.column width="50%"}
+...into this ![](images/lfs_tidied.png){fig-align="center"}
+:::
+:::
+
+## An example: the Labour Force survey
+
+```{r}
+#| echo: true
+#| cache: true
+lfs_16 <- read_abs("6291.0.55.001", "16")
+
+lfs_16
+```
+
+## An example: the Labour Force survey
+
+```{r, echo = TRUE}
+#| output: asis
+unique(lfs_16$series)
+```
+
+## An example: the Labour Force survey
+```{r, cache = T, echo = T, fig.width = 12, fig.height = 8, fig.align='center'}
+lfs_16 |>
+  filter(str_detect(series, ">>>"), str_detect(series, "Melbourne")) |>
+  separate_series(column_names = c("sa4", "indicator", "sex")) |>
+  filter(sex == "Persons", indicator == "Unemployment rate") |> 
+  ggplot(aes(x = date, y = value)) +
+  geom_line(colour = "#00589b") +
+  facet_wrap(~sa4, scales = "free_x") +
+  theme_mc() +
+  scale_y_continuous(limits = \(x) c(0, x[2]),
+                     breaks = seq(0, 100, 5),
+                     expand = expansion(c(0, 0.05)),
+                     labels = \(x) paste0(x, "%")) +
+  theme(axis.title = element_blank())
+
+```
+
+## Making {readabs}: some challenges
+
+-   Lots of quirky time series and catalogues
+-   Playing nice with secure corporate networks
+-   Design question about what to do with metadata
+-   Keeping up with frequent changes to the ABS Time Series Directory and website
+-   Wrangling data with non-standard formatting
+
+## Future improvements to {readabs}
+
+-   Fetch previous vintages of time series
+-   Load certain data from the new ABS API
+-   Easier discovery of catalogue numbers and series IDs
+-   Import a wider range of non-standard data releases
+-   Performance improvements and better local caching
